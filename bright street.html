@@ -1,0 +1,1430 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Bright Streets - Community Complaint Tracker</title>
+    
+    <meta name="theme-color" content="#E50914">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
+    <link rel="icon" href="intro.jpg" type="image/jpeg">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        /* NETFLIX RED PRIMARY */
+                        primary: '#E50914', 
+                        secondary: '#F3F4F6',
+                        /* NETFLIX DARK BACKGROUNDS */
+                        dark: '#141414',
+                        darkBg: '#000000', 
+                        darkCard: '#181818', 
+                        gold: '#F59E0B',
+                        neonRed: '#FF0000',
+                    },
+                    animation: {
+                        'spin-slow': 'spin 3s linear infinite',
+                        'pulse-fast': 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* --- GLOBAL BACKGROUND IMAGE --- */
+        body { 
+            font-family: 'Inter', sans-serif; 
+            -webkit-tap-highlight-color: transparent; 
+            background-image: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)), url('intro.jpg');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            background-repeat: no-repeat;
+        }
+        
+        /* --- NETFLIX THEME: RED GLOWING EFFECT --- */
+        .nav-item {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+        }
+
+        .nav-item.active { 
+            background-color: #000000; 
+            color: #E50914 !important;
+            box-shadow: 0 0 20px rgba(229, 9, 20, 0.6), 
+                        inset 0 0 10px rgba(229, 9, 20, 0.2);
+            border: 1px solid #E50914;
+            transform: scale(1.05) translateY(-2px);
+            z-index: 50;
+            text-shadow: 0 0 8px rgba(229, 9, 20, 0.5);
+            font-weight: 800;
+        }
+
+        .nav-item:hover:not(.active) { background-color: #333; color: white; }
+        
+        /* --- PAGE TRANSITIONS --- */
+        #intro-page {
+            position: fixed;
+            inset: 0;
+            background-color: rgba(0, 0, 0, 0.95);
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 1s ease-out, visibility 1s;
+        }
+        
+        #login-page {
+            position: fixed;
+            inset: 0;
+            z-index: 9000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.8s ease-in-out;
+        }
+
+        #intro-page.hidden-fade, #login-page.hidden-fade {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        /* --- REST OF STYLES --- */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.5); }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+        
+        .hidden-section { display: none; }
+        .fade-in { animation: fadeIn 0.5s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        *, *::before, *::after { transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease; }
+        
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; }
+        
+        #map { height: 400px; width: 100%; z-index: 0; position: relative; }
+        
+        /* Ensure Toast appears ABOVE login modal */
+        #toast-container { z-index: 10000 !important; }
+        .toast-enter { transform: translateY(100%); opacity: 0; }
+        .toast-enter-active { transform: translateY(0); opacity: 1; transition: all 300ms ease-out; }
+        .toast-exit { transform: translateY(0); opacity: 1; }
+        .toast-exit-active { transform: translateY(100%); opacity: 0; transition: all 300ms ease-in; }
+        
+        .cursor-ew-resize { cursor: ew-resize; }
+
+        .reveal-on-scroll {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.8s cubic-bezier(0.5, 0, 0, 1);
+        }
+        .reveal-on-scroll.is-visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        /* Floating Labels for Login */
+        .floating-input:focus ~ label,
+        .floating-input:not(:placeholder-shown) ~ label {
+            top: -0.5rem;
+            font-size: 0.75rem;
+            color: #E50914;
+            background-color: #000;
+            padding: 0 4px;
+        }
+    </style>
+    <script>
+        document.documentElement.classList.add('dark');
+        localStorage.setItem('color-theme', 'dark');
+    </script>
+</head>
+<body class="text-gray-200 transition-colors duration-300 overflow-x-hidden">
+
+    <div id="intro-page">
+        <div class="relative w-80 h-80 flex items-center justify-center">
+            <div class="absolute inset-0 bg-red-600 rounded-full blur-[100px] opacity-20 animate-pulse-fast"></div>
+            <img 
+                src="intro.jpg" 
+                onerror="this.onerror=null; this.src='https://images.unsplash.com/photo-1579546929518-9e396f3cc809?q=80&w=1000&auto=format&fit=crop';" 
+                alt="Bright Streets Logo" 
+                class="relative z-10 w-full h-full object-contain drop-shadow-2xl animate-[bounce_2s_infinite]"
+            >
+        </div>
+        <h1 class="text-white text-4xl font-bold mt-8 tracking-widest uppercase animate-pulse" style="text-shadow: 0 0 20px #E50914;">Bright Streets</h1>
+        <div class="mt-4 w-48 h-1 bg-gray-800 rounded-full overflow-hidden">
+            <div class="h-full bg-gradient-to-r from-red-600 to-red-900 w-full animate-[translateX_1.5s_ease-in-out_infinite]" style="transform-origin: left; animation: loadBar 1.5s infinite;"></div>
+        </div>
+        <style>
+            @keyframes loadBar {
+                0% { transform: translateX(-100%); }
+                100% { transform: translateX(100%); }
+            }
+        </style>
+    </div>
+
+    <div id="login-page" class="hidden opacity-0">
+        <div class="bg-black/80 backdrop-blur-xl border border-gray-800 p-8 rounded-lg shadow-2xl w-full max-w-md relative mx-4">
+            <div class="absolute -top-10 -left-10 w-40 h-40 bg-red-600 rounded-full blur-[80px] opacity-20"></div>
+            <div class="absolute -bottom-10 -right-10 w-40 h-40 bg-blue-600 rounded-full blur-[80px] opacity-10"></div>
+
+            <div class="text-center mb-8 relative z-10">
+                <h2 class="text-3xl font-bold text-white mb-2">Sign In</h2>
+                <p class="text-gray-400 text-sm">Join the community complaint tracker</p>
+            </div>
+
+            <form onsubmit="event.preventDefault(); enterApp();" class="space-y-5 relative z-10">
+                <div class="relative">
+                    <input type="text" id="login-name" class="floating-input block w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-md text-white focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary peer placeholder-transparent" placeholder="Full Name" required>
+                    <label for="login-name" class="absolute left-4 top-3 text-gray-400 transition-all duration-200 pointer-events-none">Full Name</label>
+                </div>
+
+                <div class="grid grid-cols-3 gap-3">
+                    <div class="col-span-2 relative">
+                        <input type="tel" id="login-mobile" class="floating-input block w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-md text-white focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary peer placeholder-transparent" placeholder="Mobile Number" required>
+                        <label for="login-mobile" class="absolute left-4 top-3 text-gray-400 transition-all duration-200 pointer-events-none">Mobile No.</label>
+                    </div>
+                    <button type="button" id="otp-btn" onclick="simulateOTP()" class="text-xs bg-gray-800 text-gray-300 rounded border border-gray-600 hover:bg-gray-700 transition active:scale-95 font-bold">Get OTP</button>
+                </div>
+
+                <div class="relative">
+                    <input type="text" id="login-otp" class="floating-input block w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-md text-white focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary peer placeholder-transparent" placeholder="Enter OTP">
+                    <label for="login-otp" class="absolute left-4 top-3 text-gray-400 transition-all duration-200 pointer-events-none">Enter OTP</label>
+                </div>
+
+                <div class="flex items-center justify-between bg-gray-800/50 p-3 rounded-md border border-gray-700">
+                    <span id="login-location-text" class="text-xs text-gray-400 truncate max-w-[200px]">Location not detected</span>
+                    <button type="button" onclick="detectLoginLocation()" class="text-xs text-primary hover:text-white flex items-center gap-1 font-bold transition-colors">
+                        <i class="fa-solid fa-location-crosshairs"></i> Auto Detect
+                    </button>
+                </div>
+
+                <button type="submit" class="w-full bg-primary hover:bg-red-700 text-white font-bold py-3 rounded-md shadow-lg shadow-red-900/50 transition transform active:scale-95 text-lg mt-4">
+                    Get Started
+                </button>
+            </form>
+
+            <div class="mt-6 text-center text-gray-500 text-xs">
+                By signing in, you agree to Bright Streets <a href="#" class="text-white hover:underline">Terms of Service</a>.
+            </div>
+        </div>
+    </div>
+
+    <div id="main-app-content" class="hidden opacity-0 transition-opacity duration-1000">
+
+        <div id="offline-banner" class="hidden bg-yellow-600 text-white text-center py-2 text-sm font-bold shadow-md sticky top-0 z-[60]">
+            <i class="fa-solid fa-wifi-slash mr-2"></i> You are currently offline. Reports will be saved locally.
+        </div>
+
+        <div id="toast-container" class="fixed bottom-4 right-4 flex flex-col gap-2 pointer-events-none"></div>
+
+        <nav class="bg-darkCard/90 backdrop-blur-md border-b border-gray-800 sticky top-0 z-50 shadow-md shadow-black">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between h-16">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0 flex items-center gap-2 cursor-pointer" onclick="showSection('dashboard')">
+                            <div class="bg-primary text-white p-2 rounded-lg shadow-sm shadow-red-900">
+                                <i class="fa-solid fa-location-dot text-xl"></i>
+                            </div>
+                            <span class="font-bold text-xl text-primary tracking-tight">Bright Streets</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <div class="hidden md:flex items-center space-x-2">
+                            <button onclick="showSection('dashboard')" id="nav-dashboard" class="nav-item active px-4 py-2 rounded-md text-sm font-bold transition flex items-center gap-2">
+                                <i class="fa-solid fa-border-all"></i> Dashboard
+                            </button>
+                            <button onclick="showSection('file-complaint')" id="nav-file-complaint" class="nav-item text-gray-400 px-4 py-2 rounded-md text-sm font-medium transition flex items-center gap-2">
+                                <i class="fa-solid fa-file-pen"></i> File Complaint
+                            </button>
+                            <button onclick="showSection('track-progress')" id="nav-track-progress" class="nav-item text-gray-400 px-4 py-2 rounded-md text-sm font-medium transition flex items-center gap-2">
+                                <i class="fa-solid fa-clock"></i> Track Progress
+                            </button>
+                            <button onclick="showSection('leaderboard')" id="nav-leaderboard" class="nav-item text-gray-400 px-4 py-2 rounded-md text-sm font-medium transition flex items-center gap-2">
+                                <i class="fa-solid fa-trophy"></i> Leaderboard
+                            </button>
+                            <button onclick="showSection('history')" id="nav-history" class="nav-item text-gray-400 px-4 py-2 rounded-md text-sm font-medium transition flex items-center gap-2">
+                                <i class="fa-solid fa-clock-rotate-left"></i> History
+                            </button>
+                            <button onclick="showSection('local-news')" id="nav-local-news" class="nav-item text-gray-400 px-4 py-2 rounded-md text-sm font-medium transition flex items-center gap-2">
+                                <i class="fa-solid fa-newspaper"></i> Local News
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative pb-20">
+
+            <div id="duplicate-modal" class="fixed inset-0 bg-black/80 z-[60] hidden flex items-center justify-center backdrop-blur-sm fade-in px-4">
+                <div class="bg-darkCard rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-gray-700">
+                    <div class="bg-yellow-900/20 p-6 text-center border-b border-yellow-800/30">
+                        <div class="w-16 h-16 bg-yellow-900/40 rounded-full flex items-center justify-center mx-auto mb-3 animate-bounce">
+                            <i class="fa-solid fa-triangle-exclamation text-3xl text-yellow-500"></i>
+                        </div>
+                        <h3 class="text-xl font-bold text-white">Wait! Similar Report Found</h3>
+                        <p class="text-sm text-gray-400 mt-1">We found an active issue extremely close to your location.</p>
+                    </div>
+                    
+                    <div class="p-6">
+                        <div class="bg-gray-800/50 rounded-xl p-4 border border-gray-700 mb-6">
+                            <div class="flex gap-4">
+                                <div class="w-20 h-20 rounded-lg bg-gray-600 bg-cover bg-center flex-shrink-0" style="background-image: url('https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?q=80&w=1470&auto=format&fit=crop');"></div>
+                                <div>
+                                    <h4 class="font-bold text-white text-sm">Large Pothole on Main St</h4>
+                                    <div class="text-xs text-gray-400 mt-1 flex flex-col gap-1">
+                                        <span><i class="fa-solid fa-user mr-1"></i> Reported by: <strong>John D.</strong></span>
+                                        <span><i class="fa-solid fa-clock mr-1"></i> 2 hours ago</span>
+                                        <span class="text-green-400"><i class="fa-solid fa-check-circle mr-1"></i> 5 others verified this</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <p class="text-center text-sm text-gray-300 mb-6">Is this the issue you are trying to report? Verify it instead to save time!</p>
+
+                        <div class="grid grid-cols-2 gap-4">
+                            <button onclick="confirmDuplicate()" class="bg-primary hover:bg-red-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition transform active:scale-95 flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-thumbs-up"></i> Yes, Verify (+50 pts)
+                            </button>
+                            <button onclick="ignoreDuplicate()" class="bg-gray-700 border border-gray-600 text-gray-200 font-medium py-3 px-4 rounded-xl hover:bg-gray-600 transition">
+                                No, New Issue
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="dashboard" class="section fade-in">
+                <h1 class="text-3xl font-bold text-white mb-2">Dashboard</h1>
+                <p class="text-gray-400 mb-8">Overview of your community complaint tracking system</p>
+
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                    <div class="reveal-on-scroll bg-darkCard/90 backdrop-blur-sm p-6 rounded-xl border border-gray-700 shadow-sm transition-all hover:shadow-md hover:border-primary/50">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h3 class="text-4xl font-bold text-white">47</h3>
+                                <p class="text-sm text-gray-400 mt-1">Total Complaints</p>
+                                <span class="text-xs text-green-400 font-medium">+12% from last month</span>
+                            </div>
+                            <div class="text-gray-500 bg-gray-700/50 p-3 rounded-lg"><i class="fa-solid fa-file-invoice text-xl"></i></div>
+                        </div>
+                    </div>
+                    <div class="reveal-on-scroll bg-darkCard/90 backdrop-blur-sm p-6 rounded-xl border border-gray-700 shadow-sm transition-all hover:shadow-md hover:border-yellow-500/50" style="transition-delay: 100ms">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h3 class="text-4xl font-bold text-white">23</h3>
+                                <p class="text-sm text-gray-400 mt-1">In Progress</p>
+                                <span class="text-xs text-gray-500">Currently being addressed</span>
+                            </div>
+                            <div class="text-yellow-500 bg-yellow-900/20 p-3 rounded-lg"><i class="fa-solid fa-spinner text-xl"></i></div>
+                        </div>
+                    </div>
+                    <div class="reveal-on-scroll bg-darkCard/90 backdrop-blur-sm p-6 rounded-xl border border-gray-700 shadow-sm transition-all hover:shadow-md hover:border-green-500/50" style="transition-delay: 200ms">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h3 class="text-4xl font-bold text-white">18</h3>
+                                <p class="text-sm text-gray-400 mt-1">Resolved</p>
+                                <span class="text-xs text-gray-500">Successfully completed</span>
+                            </div>
+                            <div class="text-green-500 bg-green-900/20 p-3 rounded-lg"><i class="fa-solid fa-chart-line text-xl"></i></div>
+                        </div>
+                    </div>
+                    <div class="reveal-on-scroll bg-darkCard/90 backdrop-blur-sm p-6 rounded-xl border border-gray-700 shadow-sm transition-all hover:shadow-md hover:border-red-500/50" style="transition-delay: 300ms">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h3 class="text-4xl font-bold text-white">6</h3>
+                                <p class="text-sm text-gray-400 mt-1">Pending</p>
+                                <span class="text-xs text-gray-500">Awaiting review</span>
+                            </div>
+                            <div class="text-gray-500 bg-gray-700/50 p-3 rounded-lg"><i class="fa-solid fa-triangle-exclamation text-xl"></i></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="offline-queue-card" class="hidden mb-8 bg-yellow-900/20 rounded-xl border border-yellow-700/50 p-4">
+                    <div class="flex justify-between items-center">
+                        <div class="flex items-center gap-3">
+                            <i class="fa-solid fa-cloud-arrow-up text-yellow-400 text-xl"></i>
+                            <div>
+                                <h3 class="font-bold text-white">Offline Queue</h3>
+                                <p class="text-sm text-gray-300"><span id="queue-count">0</span> items waiting to sync</p>
+                            </div>
+                        </div>
+                        <button onclick="syncOfflineComplaints()" class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition">
+                            Force Sync
+                        </button>
+                    </div>
+                </div>
+
+                <div class="mb-8 reveal-on-scroll">
+                    <div class="bg-darkCard/90 backdrop-blur-sm rounded-xl border border-gray-700 shadow-sm overflow-hidden">
+                        <div class="p-4 border-b border-gray-700 bg-gray-800/50 flex justify-between items-center">
+                            <h2 class="text-lg font-bold text-white"><i class="fa-solid fa-map-location-dot mr-2 text-primary"></i>Community Map View</h2>
+                            <div class="flex gap-4 text-xs font-medium">
+                                <span class="flex items-center text-gray-300"><span class="w-3 h-3 rounded-full bg-red-500 mr-2"></span> Open Issue</span>
+                                <span class="flex items-center text-gray-300"><span class="w-3 h-3 rounded-full bg-green-500 mr-2"></span> Resolved</span>
+                            </div>
+                        </div>
+                        <div id="map"></div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div class="reveal-on-scroll bg-darkCard/90 backdrop-blur-sm rounded-xl border border-gray-700 shadow-sm p-6">
+                        <h2 class="text-xl font-bold text-white mb-1"><i class="fa-solid fa-chart-simple mr-2 text-primary"></i>Track Progress</h2>
+                        <p class="text-gray-400 text-sm mb-6">Monitor your complaint status and updates</p>
+
+                        <div class="space-y-6">
+                            <div>
+                                <div class="flex justify-between mb-1">
+                                    <span class="text-sm font-medium text-gray-300">Street Light Repair</span>
+                                    <span class="text-sm font-medium text-gray-300">75%</span>
+                                </div>
+                                <div class="w-full bg-gray-700 rounded-full h-2.5">
+                                    <div class="bg-primary h-2.5 rounded-full relative" style="width: 75%">
+                                        <div class="absolute -right-1 -top-1 w-4 h-4 bg-gray-800 border-2 border-primary rounded-full shadow-sm"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between mb-1">
+                                    <span class="text-sm font-medium text-gray-300">Road Pothole Fix</span>
+                                    <span class="text-sm font-medium text-gray-300">45%</span>
+                                </div>
+                                <div class="w-full bg-gray-700 rounded-full h-2.5">
+                                    <div class="bg-primary h-2.5 rounded-full relative" style="width: 45%">
+                                        <div class="absolute -right-1 -top-1 w-4 h-4 bg-gray-800 border-2 border-primary rounded-full shadow-sm"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between mb-1">
+                                    <span class="text-sm font-medium text-gray-300">Water Drainage</span>
+                                    <span class="text-sm font-medium text-gray-300">90%</span>
+                                </div>
+                                <div class="w-full bg-gray-700 rounded-full h-2.5">
+                                    <div class="bg-primary h-2.5 rounded-full relative" style="width: 90%">
+                                        <div class="absolute -right-1 -top-1 w-4 h-4 bg-gray-800 border-2 border-primary rounded-full shadow-sm"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <button onclick="showSection('track-progress')" class="w-full mt-6 bg-gray-700 text-gray-300 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-600 transition">View All Progress</button>
+                    </div>
+
+                    <div class="bg-darkCard/90 backdrop-blur-sm rounded-xl border border-gray-700 shadow-sm p-6">
+                        <h2 class="text-xl font-bold text-white mb-1"><i class="fa-solid fa-location-dot mr-2 text-primary"></i>Local Complaints</h2>
+                        <p class="text-gray-400 text-sm mb-6">Verified by your neighbors</p>
+
+                        <div class="space-y-4">
+                            <div class="reveal-on-scroll border border-gray-700/50 rounded-lg p-4 transition hover:bg-gray-700/50">
+                                <div class="flex justify-between items-start mb-3">
+                                    <div class="flex items-center gap-3">
+                                        <div class="bg-yellow-900/30 text-yellow-500 p-2 rounded-full h-8 w-8 flex items-center justify-center"><i class="fa-solid fa-wrench text-xs"></i></div>
+                                        <div>
+                                            <h4 class="font-semibold text-gray-200 text-sm">Broken Street Sign</h4>
+                                            <p class="text-xs text-gray-400">Main Street, Downtown</p>
+                                        </div>
+                                    </div>
+                                    <span class="bg-yellow-900/40 text-yellow-400 text-xs px-2.5 py-1 rounded-full font-medium">In Progress</span>
+                                </div>
+                                
+                                <div class="flex justify-end">
+                                    <button onclick="toggleUpvote(this, 'count-1')" class="group flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-700/50 text-gray-400 border border-transparent hover:border-gray-600 transition active:scale-95">
+                                        <i class="fa-solid fa-arrow-up transition-transform group-hover:-translate-y-0.5"></i>
+                                        <span class="text-xs font-bold"><span id="count-1">12</span> Neighbors Verified</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="reveal-on-scroll border border-gray-700/50 rounded-lg p-4 transition hover:bg-gray-700/50" style="transition-delay: 100ms">
+                                <div class="flex justify-between items-start mb-3">
+                                    <div class="flex items-center gap-3">
+                                        <div class="bg-gray-700 text-gray-400 p-2 rounded-full h-8 w-8 flex items-center justify-center"><i class="fa-solid fa-hourglass-start text-xs"></i></div>
+                                        <div>
+                                            <h4 class="font-semibold text-gray-200 text-sm">Garbage Collection Issue</h4>
+                                            <p class="text-xs text-gray-400">Oak Avenue, Residential</p>
+                                        </div>
+                                    </div>
+                                    <span class="bg-gray-700 text-gray-300 text-xs px-2.5 py-1 rounded-full font-medium">Pending</span>
+                                </div>
+
+                                <div class="flex justify-end">
+                                    <button onclick="toggleUpvote(this, 'count-2')" class="group flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-700/50 text-gray-400 border border-transparent hover:border-gray-600 transition active:scale-95">
+                                        <i class="fa-solid fa-arrow-up transition-transform group-hover:-translate-y-0.5"></i>
+                                        <span class="text-xs font-bold"><span id="count-2">5</span> Neighbors Verified</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="reveal-on-scroll border border-gray-700/50 rounded-lg p-4 transition hover:bg-gray-700/50" style="transition-delay: 200ms">
+                                <div class="flex justify-between items-start mb-3">
+                                    <div class="flex items-center gap-3">
+                                        <div class="bg-green-900/30 text-green-500 p-2 rounded-full h-8 w-8 flex items-center justify-center"><i class="fa-solid fa-check text-xs"></i></div>
+                                        <div>
+                                            <h4 class="font-semibold text-gray-200 text-sm">Traffic Light Malfunction</h4>
+                                            <p class="text-xs text-gray-400">5th & Broadway</p>
+                                        </div>
+                                    </div>
+                                    <span class="bg-green-900/40 text-green-400 text-xs px-2.5 py-1 rounded-full font-medium">Resolved</span>
+                                </div>
+
+                                <div class="flex justify-end">
+                                    <button disabled class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-700/30 text-gray-500 cursor-not-allowed">
+                                        <i class="fa-solid fa-check"></i>
+                                        <span class="text-xs font-bold">42 Verified (Closed)</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <button class="w-full mt-6 bg-gray-700 text-gray-300 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-600 transition">Browse All Local Complaints</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="file-complaint" class="section hidden-section fade-in">
+                <div class="max-w-3xl mx-auto bg-darkCard/90 backdrop-blur-sm rounded-xl shadow-sm p-8 border border-gray-700">
+                    <div class="text-center mb-8">
+                        <h2 class="text-2xl font-bold text-white flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-bolt text-primary"></i> AI-Powered Quick Filing
+                        </h2>
+                        <p class="text-gray-400 mt-2">Take a photo and let AI categorize the issue. Works Offline!</p>
+                    </div>
+
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium text-gray-300 mb-2">Upload Photo of Issue *</label>
+                        <div onclick="document.getElementById('file-upload').click()" id="upload-box" class="border-2 border-dashed border-primary/30 bg-gray-800/50 rounded-xl p-10 text-center hover:bg-red-900/20 transition cursor-pointer group relative">
+                            <input type="file" id="file-upload" class="hidden" accept="image/*" onchange="handleFileSelect(this)">
+                            
+                            <div id="upload-icon-container" class="bg-gray-700 h-16 w-16 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
+                                <i class="fa-solid fa-cloud-arrow-up text-3xl text-primary transition"></i>
+                            </div>
+                            <p id="upload-text" class="text-gray-300 font-medium">Click to upload or drag and drop</p>
+                            <p id="upload-subtext" class="text-gray-500 text-sm mt-1">SVG, PNG, JPG or GIF (max. 5MB)</p>
+                        </div>
+                    </div>
+
+                    <div id="ai-results" class="hidden mb-8 space-y-6 fade-in border-t border-gray-700 pt-6">
+                        <div class="bg-green-900/30 border border-green-800 rounded-lg p-4 flex items-start gap-3">
+                            <div class="bg-green-800 text-green-300 p-2 rounded-full">
+                                <i class="fa-solid fa-robot"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-green-200">AI Analysis Complete</h4>
+                                <p class="text-xs text-green-300 mt-1">We've automatically detected the issue details from your image.</p>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-300 mb-2">Category (Auto-detected)</label>
+                                <input type="text" id="ai-category" class="w-full bg-gray-800 border border-gray-600 text-white text-sm rounded-lg focus:ring-primary focus:border-primary block p-2.5 font-semibold" readonly>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-300 mb-2">Severity (Auto-detected)</label>
+                                <input type="text" id="ai-severity" class="w-full bg-red-900/20 border border-red-800 text-red-400 text-sm rounded-lg focus:ring-red-500 focus:border-red-500 block p-2.5 font-bold" readonly>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <div class="flex justify-between items-center mb-2">
+                                <label class="text-sm font-medium text-gray-300">Description</label>
+                                <button onclick="startDictation()" type="button" id="mic-btn" class="text-xs bg-gray-700 text-gray-300 px-3 py-1 rounded-full hover:bg-primary hover:text-white transition flex items-center gap-1 group">
+                                    <i class="fa-solid fa-microphone"></i> <span id="mic-text">Tap to Speak</span>
+                                </button>
+                            </div>
+                            
+                            <div class="relative">
+                                <textarea id="ai-description" rows="3" class="block p-2.5 w-full text-sm text-white bg-gray-800 rounded-lg border border-gray-600 focus:ring-primary focus:border-primary placeholder-gray-400" placeholder="Describe the issue..."></textarea>
+                                <div id="mic-indicator" class="hidden absolute right-3 bottom-3 flex gap-1 items-end h-4">
+                                    <div class="w-1 bg-primary h-full animate-[bounce_1s_infinite]"></div>
+                                    <div class="w-1 bg-primary h-2/3 animate-[bounce_1.2s_infinite]"></div>
+                                    <div class="w-1 bg-primary h-full animate-[bounce_0.8s_infinite]"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-8">
+                        <label class="block text-sm font-medium text-gray-300 mb-2">Location</label>
+                        <div class="flex gap-2 relative">
+                            <i class="fa-solid fa-location-dot absolute left-4 top-3.5 text-gray-400"></i>
+                            <input type="text" id="location-input" placeholder="Detecting location..." class="flex-1 bg-gray-700 border-none rounded-lg pl-10 pr-4 py-3 text-gray-200 focus:ring-2 focus:ring-primary outline-none transition-colors" readonly>
+                            <button onclick="detectLocation()" class="bg-gray-700 hover:bg-gray-600 text-gray-200 px-6 py-3 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
+                                <i class="fa-solid fa-location-crosshairs"></i> Detect
+                            </button>
+                        </div>
+                    </div>
+
+                    <button onclick="submitComplaint()" id="submit-btn" class="w-full bg-primary hover:bg-red-700 text-white font-bold py-4 rounded-lg shadow-md transition transform active:scale-[0.98] flex items-center justify-center gap-2 text-lg">
+                        Submit Complaint <i class="fa-solid fa-paper-plane"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div id="track-progress" class="section hidden-section fade-in">
+                <h1 class="text-3xl font-bold text-white mb-6">My Submissions</h1>
+                
+                <div id="offline-list-container" class="hidden mb-6">
+                    <h2 class="text-sm font-bold text-yellow-500 uppercase tracking-wide mb-3">Waiting to Upload</h2>
+                    <div id="offline-list" class="space-y-3">
+                        </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                    <div class="bg-darkCard/90 backdrop-blur-sm p-5 rounded-xl border border-gray-700 shadow-sm flex items-center gap-4">
+                        <div class="bg-blue-900/30 p-3 rounded-full h-12 w-12 flex items-center justify-center">
+                            <i class="fa-solid fa-inbox text-blue-400 text-xl"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-2xl font-bold text-white">1</h3>
+                            <p class="text-sm text-gray-400">Submitted</p>
+                        </div>
+                    </div>
+                    <div class="bg-darkCard/90 backdrop-blur-sm p-5 rounded-xl border border-gray-700 shadow-sm flex items-center gap-4">
+                        <div class="bg-yellow-900/30 p-3 rounded-full h-12 w-12 flex items-center justify-center">
+                            <i class="fa-solid fa-list-check text-yellow-400 text-xl"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-2xl font-bold text-white">2</h3>
+                            <p class="text-sm text-gray-400">In Progress</p>
+                        </div>
+                    </div>
+                    <div class="bg-darkCard/90 backdrop-blur-sm p-5 rounded-xl border border-gray-700 shadow-sm flex items-center gap-4">
+                        <div class="bg-green-900/30 p-3 rounded-full h-12 w-12 flex items-center justify-center">
+                            <i class="fa-solid fa-clipboard-check text-green-400 text-xl"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-2xl font-bold text-white">1</h3>
+                            <p class="text-sm text-gray-400">Resolved</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="reveal-on-scroll bg-darkCard/90 backdrop-blur-sm rounded-xl border border-gray-700 shadow-sm p-6 mb-4 transition-all hover:shadow-md">
+                    <div class="flex justify-between items-start mb-2">
+                        <h3 class="text-lg font-bold text-white flex items-center">Broken Streetlight <span class="bg-gray-700 text-gray-300 text-xs px-2 py-1 rounded ml-3 font-mono">#TC001</span></h3>
+                        <span class="bg-yellow-900/40 text-yellow-400 text-xs font-bold px-3 py-1 rounded-full flex items-center"><i class="fa-solid fa-spinner mr-1.5 animate-spin-slow"></i> In-progress</span>
+                    </div>
+                    <div class="flex text-sm text-gray-400 mb-6 items-center">
+                        <i class="fa-solid fa-location-dot mr-2 text-primary"></i> Elm Street, Block 2
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm mb-6 bg-gray-800/50 p-4 rounded-lg">
+                        <div><span class="font-medium text-gray-200 block mb-1">Category</span><span class="text-gray-400">Public Lighting</span></div>
+                        <div><span class="font-medium text-gray-200 block mb-1">Department</span><span class="text-gray-400">Electrical Maintenance</span></div>
+                        <div><span class="font-medium text-gray-200 block mb-1">Submitted On</span><span class="text-gray-400">Jan 20, 2024</span></div>
+                        <div><span class="font-medium text-gray-200 block mb-1">Est. Completion</span><span class="text-gray-400">Jan 28, 2024</span></div>
+                    </div>
+
+                    <div class="mb-2 flex justify-between items-end">
+                        <span class="text-sm font-semibold text-gray-200">Current Progress</span>
+                        <span class="text-sm font-bold text-primary">75%</span>
+                    </div>
+                    <div class="w-full bg-gray-700 rounded-full h-3 mb-2">
+                        <div class="bg-primary h-3 rounded-full relative transition-all duration-1000 ease-out" style="width: 75%">
+                            <div class="absolute -right-1 -top-1 w-5 h-5 bg-gray-800 border-[3px] border-primary rounded-full shadow-sm"></div>
+                        </div>
+                    </div>
+                    <div class="flex justify-between items-center mt-4">
+                        <p class="text-xs text-gray-500 flex items-center"><i class="fa-regular fa-clock mr-1"></i> Last updated: 2 hours ago</p>
+                        <button class="border border-gray-600 text-gray-300 px-4 py-2 rounded-lg text-sm hover:bg-gray-700 transition flex items-center"><i class="fa-solid fa-eye mr-2"></i> View Details</button>
+                    </div>
+                </div>
+
+                <div class="reveal-on-scroll bg-darkCard/90 backdrop-blur-sm rounded-xl border border-gray-700 shadow-sm p-6 mb-4 transition-all hover:shadow-md">
+                    <div class="flex justify-between items-start mb-2">
+                        <h3 class="text-lg font-bold text-white flex items-center">Pothole Repair Request <span class="bg-gray-700 text-gray-300 text-xs px-2 py-1 rounded ml-3 font-mono">#TC002</span></h3>
+                        <span class="bg-blue-900/40 text-blue-400 text-xs font-bold px-3 py-1 rounded-full flex items-center"><i class="fa-solid fa-inbox mr-1.5"></i> Submitted</span>
+                    </div>
+                    <div class="flex text-sm text-gray-400 mb-6 items-center">
+                        <i class="fa-solid fa-location-dot mr-2 text-primary"></i> Main Street & 5th Avenue
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm mb-6 bg-gray-800/50 p-4 rounded-lg">
+                        <div><span class="font-medium text-gray-200 block mb-1">Category</span><span class="text-gray-400">Road Maintenance</span></div>
+                        <div><span class="font-medium text-gray-200 block mb-1">Department</span><span class="text-gray-400">Public Works</span></div>
+                        <div><span class="font-medium text-gray-200 block mb-1">Submitted On</span><span class="text-gray-400">Jan 22, 2024</span></div>
+                        <div><span class="font-medium text-gray-200 block mb-1">Est. Completion</span><span class="text-gray-400">Feb 5, 2024</span></div>
+                    </div>
+
+                    <div class="mb-2 flex justify-between items-end">
+                        <span class="text-sm font-semibold text-gray-200">Current Progress</span>
+                        <span class="text-sm font-bold text-gray-400">Pending Review</span>
+                    </div>
+                    <div class="w-full bg-gray-700 rounded-full h-3 mb-2">
+                        <div class="bg-gray-500 h-3 rounded-full relative transition-all duration-1000 ease-out" style="width: 5%">
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-500 flex items-center mt-4"><i class="fa-regular fa-clock mr-1"></i> Last updated: 1 day ago</p>
+                </div>
+            </div>
+            
+            <div id="leaderboard" class="section hidden-section fade-in">
+                <h1 class="text-3xl font-bold text-white mb-2">Citizen Karma</h1>
+                <p class="text-gray-400 mb-8">Earn points for making your city better. Redeem for real rewards.</p>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div class="lg:col-span-1 space-y-6">
+                        <div class="reveal-on-scroll bg-gradient-to-br from-primary to-red-900 rounded-xl shadow-lg p-6 text-white relative overflow-hidden">
+                            <div class="absolute top-0 right-0 p-4 opacity-20"><i class="fa-solid fa-medal text-9xl"></i></div>
+                            <div class="relative z-10">
+                                <h3 class="text-red-100 font-medium mb-1">My Rank</h3>
+                                <div class="text-2xl font-bold flex items-center gap-2 mb-4">
+                                    <i class="fa-solid fa-shield-halved"></i> Community Guardian
+                                </div>
+                                
+                                <div class="mb-6">
+                                    <div class="flex justify-between items-end mb-2">
+                                        <span class="text-4xl font-bold">1,250</span>
+                                        <span class="text-sm text-red-100 mb-1">Karma Points</span>
+                                    </div>
+                                    <div class="w-full bg-black/20 rounded-full h-2.5">
+                                        <div class="bg-white h-2.5 rounded-full" style="width: 65%"></div>
+                                    </div>
+                                    <p class="text-xs text-red-100 mt-2">250 points to next level</p>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-2 mt-4">
+                                    <div class="bg-white/20 rounded-lg p-2 text-center backdrop-blur-sm">
+                                        <span class="block text-xl font-bold">12</span>
+                                        <span class="text-xs text-red-100">Verified Reports</span>
+                                    </div>
+                                    <div class="bg-white/20 rounded-lg p-2 text-center backdrop-blur-sm">
+                                        <span class="block text-xl font-bold">4</span>
+                                        <span class="text-xs text-red-100">Helpful Votes</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="reveal-on-scroll bg-darkCard rounded-xl border border-gray-700 shadow-sm p-6">
+                            <h3 class="font-bold text-white mb-4">My Badges</h3>
+                            <div class="flex gap-4">
+                                <div class="flex flex-col items-center group cursor-pointer">
+                                    <div class="w-12 h-12 rounded-full bg-yellow-900/40 text-yellow-500 flex items-center justify-center text-xl mb-1 group-hover:scale-110 transition">
+                                        <i class="fa-solid fa-road"></i>
+                                    </div>
+                                    <span class="text-xs text-gray-400">Pothole Patrol</span>
+                                </div>
+                                <div class="flex flex-col items-center group cursor-pointer">
+                                    <div class="w-12 h-12 rounded-full bg-blue-900/40 text-blue-500 flex items-center justify-center text-xl mb-1 group-hover:scale-110 transition">
+                                        <i class="fa-solid fa-hand-holding-heart"></i>
+                                    </div>
+                                    <span class="text-xs text-gray-400">Volunteer</span>
+                                </div>
+                                <div class="flex flex-col items-center group cursor-pointer opacity-50">
+                                    <div class="w-12 h-12 rounded-full bg-gray-700 text-gray-400 flex items-center justify-center text-xl mb-1">
+                                        <i class="fa-solid fa-tree"></i>
+                                    </div>
+                                    <span class="text-xs text-gray-400">Green Thumb</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="reveal-on-scroll bg-darkCard rounded-xl border border-gray-700 shadow-sm p-6">
+                            <div class="flex justify-between items-center mb-4">
+                                <h3 class="font-bold text-white"><i class="fa-solid fa-gift text-primary mr-2"></i>Rewards Shop</h3>
+                                <span class="text-xs text-primary font-medium cursor-pointer hover:underline">View All</span>
+                            </div>
+                            <div class="space-y-4">
+                                <div class="flex gap-3 items-center border-b border-gray-700 pb-3">
+                                    <div class="bg-purple-900/40 text-purple-600 p-3 rounded-lg"><i class="fa-solid fa-bus"></i></div>
+                                    <div class="flex-1">
+                                        <h4 class="text-sm font-bold text-white">Free Bus Pass (1 Week)</h4>
+                                        <p class="text-xs text-gray-400">City Transport Dept.</p>
+                                    </div>
+                                    <button class="text-xs bg-gray-700 text-gray-300 px-3 py-1 rounded-full font-bold">500 pts</button>
+                                </div>
+                                <div class="flex gap-3 items-center border-b border-gray-700 pb-3">
+                                    <div class="bg-green-900/40 text-green-600 p-3 rounded-lg"><i class="fa-solid fa-percent"></i></div>
+                                    <div class="flex-1">
+                                        <h4 class="text-sm font-bold text-white">5% Municipal Tax Credit</h4>
+                                        <p class="text-xs text-gray-400">City Council</p>
+                                    </div>
+                                    <button class="text-xs bg-gray-700 text-gray-300 px-3 py-1 rounded-full font-bold">2000 pts</button>
+                                </div>
+                                <div class="flex gap-3 items-center">
+                                    <div class="bg-orange-900/40 text-orange-600 p-3 rounded-lg"><i class="fa-solid fa-coffee"></i></div>
+                                    <div class="flex-1">
+                                        <h4 class="text-sm font-bold text-white">Free Coffee</h4>
+                                        <p class="text-xs text-gray-400">Local Partner: Joe's Cafe</p>
+                                    </div>
+                                    <button class="text-xs bg-primary text-white px-3 py-1 rounded-full font-bold hover:bg-red-700 shadow-sm shadow-primary/30">Claim</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="lg:col-span-2">
+                        <div class="reveal-on-scroll bg-darkCard rounded-xl border border-gray-700 shadow-sm overflow-hidden">
+                            <div class="p-6 border-b border-gray-700 flex justify-between items-center">
+                                <h3 class="font-bold text-lg text-white">Top Citizens (This Month)</h3>
+                                <div class="flex gap-2">
+                                    <button class="text-xs bg-primary text-white px-3 py-1 rounded-md font-medium">Monthly</button>
+                                    <button class="text-xs bg-gray-700 text-gray-400 px-3 py-1 rounded-md font-medium hover:bg-gray-600">All Time</button>
+                                </div>
+                            </div>
+                            
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left">
+                                    <thead class="bg-gray-800 text-gray-400 text-xs uppercase">
+                                        <tr>
+                                            <th class="px-6 py-4 font-medium">Rank</th>
+                                            <th class="px-6 py-4 font-medium">Citizen</th>
+                                            <th class="px-6 py-4 font-medium">Reports</th>
+                                            <th class="px-6 py-4 font-medium">Badges</th>
+                                            <th class="px-6 py-4 font-medium text-right">Points</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-700">
+                                        <tr class="hover:bg-gray-800/50 transition">
+                                            <td class="px-6 py-4">
+                                                <div class="w-8 h-8 rounded-full bg-yellow-900/40 text-yellow-600 flex items-center justify-center font-bold">1</div>
+                                            </td>
+                                            <td class="px-6 py-4">
+                                                <div class="flex items-center gap-3">
+                                                    <div class="w-8 h-8 rounded-full bg-gray-600 overflow-hidden">
+                                                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah" alt="Sarah">
+                                                    </div>
+                                                    <div>
+                                                        <div class="font-bold text-white">Sarah Jenkins</div>
+                                                        <div class="text-xs text-gray-400">Neighborhood Watch</div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td class="px-6 py-4 text-sm text-gray-300">42</td>
+                                            <td class="px-6 py-4">
+                                                <div class="flex -space-x-2">
+                                                    <div class="w-6 h-6 rounded-full bg-blue-100 border-2 border-darkCard flex items-center justify-center text-[10px] text-blue-600" title="Volunteer"><i class="fa-solid fa-hand"></i></div>
+                                                    <div class="w-6 h-6 rounded-full bg-green-100 border-2 border-darkCard flex items-center justify-center text-[10px] text-green-600" title="Eco Warrior"><i class="fa-solid fa-leaf"></i></div>
+                                                    <div class="w-6 h-6 rounded-full bg-purple-100 border-2 border-darkCard flex items-center justify-center text-[10px] text-purple-600" title="Top Reporter"><i class="fa-solid fa-star"></i></div>
+                                                </div>
+                                            </td>
+                                            <td class="px-6 py-4 text-right font-bold text-primary">2,450</td>
+                                        </tr>
+                                        <tr class="bg-primary/10 border-l-4 border-primary">
+                                            <td class="px-6 py-4">
+                                                <div class="w-8 h-8 rounded-full bg-darkCard text-primary flex items-center justify-center font-bold shadow-sm">4</div>
+                                            </td>
+                                            <td class="px-6 py-4">
+                                                <div class="flex items-center gap-3">
+                                                    <div class="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center text-xs font-bold text-gray-500">
+                                                        You
+                                                    </div>
+                                                    <div>
+                                                        <div class="font-bold text-white">Your Profile</div>
+                                                        <div class="text-xs text-gray-400">Community Guardian</div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td class="px-6 py-4 text-sm text-gray-300">12</td>
+                                            <td class="px-6 py-4">
+                                                <div class="flex -space-x-2">
+                                                    <div class="w-6 h-6 rounded-full bg-yellow-100 border-2 border-darkCard flex items-center justify-center text-[10px] text-yellow-600"><i class="fa-solid fa-road"></i></div>
+                                                </div>
+                                            </td>
+                                            <td class="px-6 py-4 text-right font-bold text-primary">1,250</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="history" class="section hidden-section fade-in">
+                <h1 class="text-3xl font-bold text-white mb-6">Complaint History</h1>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                    <div class="reveal-on-scroll bg-darkCard/90 backdrop-blur-sm p-4 rounded-xl border border-gray-700 shadow-sm text-center">
+                        <h3 class="text-3xl font-bold text-white mb-1">6</h3>
+                        <p class="text-sm text-gray-400">Total Filed</p>
+                    </div>
+                    <div class="reveal-on-scroll bg-darkCard/90 backdrop-blur-sm p-4 rounded-xl border border-gray-700 shadow-sm text-center">
+                        <h3 class="text-3xl font-bold text-green-400 mb-1">5</h3>
+                        <p class="text-sm text-gray-400">Resolved</p>
+                    </div>
+                    <div class="reveal-on-scroll bg-darkCard/90 backdrop-blur-sm p-4 rounded-xl border border-gray-700 shadow-sm text-center">
+                        <h3 class="text-3xl font-bold text-orange-400 mb-1">3 <span class="text-sm font-normal">days</span></h3>
+                        <p class="text-sm text-gray-400">Avg Response</p>
+                    </div>
+                    <div class="reveal-on-scroll bg-darkCard/90 backdrop-blur-sm p-4 rounded-xl border border-gray-700 shadow-sm text-center flex flex-col items-center">
+                        <h3 class="text-3xl font-bold text-yellow-400 mb-1 flex items-center">4.2 <i class="fa-solid fa-star text-xl ml-2"></i></h3>
+                        <p class="text-sm text-gray-400">Avg Satisfaction</p>
+                    </div>
+                </div>
+
+                <div class="reveal-on-scroll bg-darkCard/90 backdrop-blur-sm rounded-xl border border-gray-700 shadow-sm p-6 mb-4 transition-all hover:shadow-md">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-lg font-bold text-white flex items-center">Garbage Collection Delay <span class="bg-gray-700 text-gray-300 text-xs px-2 py-1 rounded ml-3 font-mono">#HC001</span></h3>
+                        <div class="flex gap-2">
+                            <span class="bg-orange-900/40 text-orange-400 text-xs font-bold px-2.5 py-1 rounded-full">MEDIUM</span>
+                            <span class="bg-green-900/40 text-green-400 text-xs font-bold px-2.5 py-1 rounded-full flex items-center"><i class="fa-solid fa-check mr-1"></i> Resolved</span>
+                        </div>
+                    </div>
+                    <p class="text-sm text-gray-400 mb-4 flex items-center"><i class="fa-solid fa-location-dot mr-2 text-gray-400"></i> Maple Street, Residential District</p>
+                    <p class="text-gray-300 mb-6 bg-gray-800/50 p-4 rounded-lg italic border-l-4 border-gray-600">"Garbage not collected for 4 days in our neighborhood, causing smell and attracting pests."</p>
+                    
+                    <div class="mb-6">
+                        <h4 class="font-bold text-white mb-3 flex items-center"><i class="fa-solid fa-camera-rotate text-primary mr-2"></i>Resolution: Before & After</h4>
+                        <div class="relative w-full h-64 rounded-xl overflow-hidden cursor-ew-resize group">
+                            <div class="absolute inset-0 w-full h-full bg-cover bg-center" style="background-image: url('https://images.unsplash.com/photo-1494522855154-9297ac14b55f?q=80&w=1470&auto=format&fit=crop');">
+                                <span class="absolute top-4 right-4 bg-primary text-white text-xs font-bold px-3 py-1 rounded-full z-20 shadow-sm">After</span>
+                            </div>
+                            <div id="before-container-1" class="absolute inset-0 w-1/2 h-full overflow-hidden bg-cover bg-center transition-all ease-out duration-100" style="background-image: url('https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?q=80&w=1470&auto=format&fit=crop'); border-right: 3px solid white;">
+                                <span class="absolute top-4 left-4 bg-gray-800 text-white text-xs font-bold px-3 py-1 rounded-full z-20 shadow-sm">Before</span>
+                            </div>
+                            <div id="slider-handle-1" class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 left-1/2 w-10 h-10 bg-primary rounded-full flex items-center justify-center shadow-lg z-30 pointer-events-none transition-all ease-out duration-100">
+                                <i class="fa-solid fa-chevron-left text-white text-xs mr-1"></i>
+                                <i class="fa-solid fa-chevron-right text-white text-xs"></i>
+                            </div>
+                            <input type="range" min="0" max="100" value="50" class="absolute inset-0 w-full h-full opacity-0 z-40 focus:outline-none cursor-ew-resize" oninput="updateSlider('1', this.value)">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-400 border-t border-b border-gray-700/50 py-4 mb-4">
+                        <div><span class="block text-xs uppercase font-semibold text-gray-500 mb-1">Submitted</span> <span class="text-gray-200 font-medium">Jan 5, 2024</span></div>
+                        <div><span class="block text-xs uppercase font-semibold text-gray-500 mb-1">Category</span> <span class="text-gray-200 font-medium">Waste Mgmt.</span></div>
+                        <div><span class="block text-xs uppercase font-semibold text-gray-500 mb-1">Resolved</span> <span class="text-gray-200 font-medium">Jan 8, 2024</span></div>
+                        <div><span class="block text-xs uppercase font-semibold text-gray-500 mb-1">Response Time</span> <span class="text-gray-200 font-medium">3 days</span></div>
+                    </div>
+                </div>
+
+                <div class="reveal-on-scroll bg-darkCard/90 backdrop-blur-sm rounded-xl border border-gray-700 shadow-sm p-6 mb-4 opacity-90 hover:opacity-100 transition">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-lg font-bold text-white flex items-center">Street Flooding Issue <span class="bg-gray-700 text-gray-300 text-xs px-2 py-1 rounded ml-3 font-mono">#HC002</span></h3>
+                        <div class="flex gap-2">
+                            <span class="bg-red-900/40 text-red-400 text-xs font-bold px-2.5 py-1 rounded-full">HIGH</span>
+                            <span class="bg-green-900/40 text-green-400 text-xs font-bold px-2.5 py-1 rounded-full flex items-center"><i class="fa-solid fa-check mr-1"></i> Resolved</span>
+                        </div>
+                    </div>
+                    <p class="text-sm text-gray-400 mb-4 flex items-center"><i class="fa-solid fa-location-dot mr-2 text-gray-400"></i> First Avenue & Market Street</p>
+                    <p class="text-gray-300 mb-6 bg-gray-800/50 p-4 rounded-lg italic border-l-4 border-gray-600">"Persistent flooding during heavy rain due to blocked storm drains."</p>
+
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-400 border-t border-b border-gray-700/50 py-4 mb-4">
+                        <div><span class="block text-xs uppercase font-semibold text-gray-500 mb-1">Submitted</span> <span class="text-gray-200 font-medium">Dec 20, 2023</span></div>
+                        <div><span class="block text-xs uppercase font-semibold text-gray-500 mb-1">Category</span> <span class="text-gray-200 font-medium">Water Infra.</span></div>
+                        <div><span class="block text-xs uppercase font-semibold text-gray-500 mb-1">Resolved</span> <span class="text-gray-200 font-medium">Jan 10, 2024</span></div>
+                        <div><span class="block text-xs uppercase font-semibold text-gray-500 mb-1">Response Time</span> <span class="text-gray-200 font-medium">21 days</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="local-news" class="section hidden-section fade-in">
+                <h1 class="text-3xl font-bold text-white mb-6">Local Updates</h1>
+                <div class="flex flex-wrap md:flex-nowrap gap-4 mb-8">
+                    <div class="reveal-on-scroll bg-darkCard/90 backdrop-blur-sm px-6 py-5 rounded-xl flex-1 text-center border border-gray-700 shadow-sm hover:shadow-md transition">
+                        <div class="bg-blue-900/20 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3">
+                            <i class="fa-regular fa-building text-xl text-blue-400"></i>
+                        </div>
+                        <h3 class="font-bold text-2xl text-white">2</h3>
+                        <p class="text-xs text-gray-500 uppercase font-semibold tracking-wider mt-1">Infrastructure</p>
+                    </div>
+                    <div class="reveal-on-scroll bg-darkCard/90 backdrop-blur-sm px-6 py-5 rounded-xl flex-1 text-center border border-gray-700 shadow-sm hover:shadow-md transition" style="transition-delay: 100ms">
+                        <div class="bg-green-900/20 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3">
+                            <i class="fa-solid fa-users text-xl text-green-400"></i>
+                        </div>
+                        <h3 class="font-bold text-2xl text-white">3</h3>
+                        <p class="text-xs text-gray-500 uppercase font-semibold tracking-wider mt-1">Community</p>
+                    </div>
+                    <div class="reveal-on-scroll bg-darkCard/90 backdrop-blur-sm px-6 py-5 rounded-xl flex-1 text-center border border-gray-700 shadow-sm hover:shadow-md transition" style="transition-delay: 200ms">
+                        <div class="bg-purple-900/20 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3">
+                            <i class="fa-regular fa-file-lines text-xl text-purple-400"></i>
+                        </div>
+                        <h3 class="font-bold text-2xl text-white">1</h3>
+                        <p class="text-xs text-gray-500 uppercase font-semibold tracking-wider mt-1">Government</p>
+                    </div>
+                </div>
+
+                <div class="reveal-on-scroll bg-darkCard/90 backdrop-blur-sm p-8 rounded-xl border border-gray-700 shadow-sm mb-6 hover:shadow-md transition">
+                    <div class="flex items-center justify-between mb-4">
+                        <span class="bg-blue-900/40 text-blue-400 text-xs font-bold px-3 py-1.5 rounded-full"><i class="fa-regular fa-building mr-1.5"></i> Infrastructure</span>
+                        <span class="text-xs text-gray-500 flex items-center font-medium"><i class="fa-regular fa-clock mr-1.5"></i> 3 min read</span>
+                    </div>
+                    <h2 class="text-2xl font-bold text-white mb-3 leading-tight hover:text-primary transition cursor-pointer">New Traffic Signal Installation on Main Street Intersection</h2>
+                    <div class="text-sm text-gray-400 mb-6 flex items-center gap-4 pb-4 border-b border-gray-700/50">
+                        <span class="flex items-center"><i class="fa-regular fa-calendar mr-2 text-gray-400"></i> Jan 26, 2024</span>
+                        <span class="flex items-center"><i class="fa-solid fa-location-dot mr-2 text-gray-400"></i> Main Street & Oak Avenue</span>
+                    </div>
+                    <p class="text-gray-300 mb-6 leading-relaxed text-lg">The city has approved the installation of a new traffic signal at the busy Main Street and Oak Avenue intersection following multiple citizen requests for improved safety measures.</p>
+                    <div class="flex justify-between items-center">
+                        <div class="flex gap-2">
+                            <span class="bg-gray-700/50 text-gray-400 text-xs px-3 py-1.5 rounded-full font-medium">#traffic</span>
+                        </div>
+                        <button class="text-sm font-bold text-primary hover:text-green-400 flex items-center group">Read Full Story <i class="fa-solid fa-arrow-right-long ml-2 group-hover:translate-x-1 transition"></i></button>
+                    </div>
+                </div>
+
+                <div class="reveal-on-scroll bg-darkCard/90 backdrop-blur-sm p-8 rounded-xl border border-gray-700 shadow-sm mb-6 hover:shadow-md transition">
+                    <div class="flex items-center justify-between mb-4">
+                        <span class="bg-green-900/40 text-green-400 text-xs font-bold px-3 py-1.5 rounded-full"><i class="fa-solid fa-users mr-1.5"></i> Community</span>
+                        <span class="text-xs text-gray-500 flex items-center font-medium"><i class="fa-regular fa-clock mr-1.5"></i> 2 min read</span>
+                    </div>
+                    <h2 class="text-2xl font-bold text-white mb-3 leading-tight hover:text-primary transition cursor-pointer">Community Clean-Up Day Success: Over 500 Volunteers Participate</h2>
+                    <p class="text-gray-300 mb-6 leading-relaxed text-lg">Last Saturday's community clean-up initiative saw unprecedented participation with over 500 volunteers helping to beautify parks, remove litter, and plant new trees across the city.</p>
+                </div>
+            </div>
+
+        </main>
+    </div> <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+    <script>
+        // Global variables to store detected location (Default: New York)
+        let userLat = 40.7128;
+        let userLng = -74.0060;
+
+        // --- 1. LOGIN & INTRO LOGIC (MODIFIED) ---
+        window.addEventListener('load', () => {
+            const introPage = document.getElementById('intro-page');
+            const loginPage = document.getElementById('login-page');
+
+            setTimeout(() => {
+                // Fade out intro
+                introPage.classList.add('hidden-fade');
+                
+                // Show LOGIN page (instead of main app)
+                loginPage.classList.remove('hidden');
+                void loginPage.offsetWidth; // Trigger reflow
+                loginPage.classList.remove('opacity-0');
+            }, 3500);
+        });
+
+        // --- NEW OTP SIMULATION: AUTO-FILL FEATURE ---
+        function simulateOTP() {
+            const mobile = document.getElementById('login-mobile').value;
+            const mobileRegex = /^[0-9]{10}$/; // Basic 10 digit check
+
+            if (mobileRegex.test(mobile)) {
+                // Simulate sending OTP
+                const btn = document.getElementById('otp-btn');
+                const originalText = btn.innerText;
+                const otpInput = document.getElementById('login-otp');
+                
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+                btn.disabled = true;
+                
+                setTimeout(() => {
+                    btn.innerHTML = 'Sent!';
+                    
+                    // Show Notification
+                    showToast("OTP Sent: 1234", "success"); 
+                    
+                    // AUTO-FILL OTP for smoother user experience
+                    otpInput.value = "1234";
+                    otpInput.focus();
+                    
+                    // Reset button after 30s
+                    setTimeout(() => {
+                        btn.innerHTML = originalText;
+                        btn.disabled = false;
+                    }, 3000); // Reset button text sooner
+                }, 1500);
+            } else {
+                showToast("Please enter a valid 10-digit mobile number first.", "warning");
+            }
+        }
+
+        // --- STRICT VALIDATION LOGIN ---
+        function enterApp() {
+            const loginPage = document.getElementById('login-page');
+            const mainContent = document.getElementById('main-app-content');
+            
+            // Get Values
+            const name = document.getElementById('login-name').value.trim();
+            const mobile = document.getElementById('login-mobile').value.trim();
+            const otp = document.getElementById('login-otp').value.trim();
+
+            // Regex Patterns
+            const mobileRegex = /^[0-9]{10}$/;
+            
+            // Validation Checks
+            if(!name) { 
+                showToast("Please enter your full name.", "warning"); 
+                return; 
+            }
+            if(!mobileRegex.test(mobile)) { 
+                showToast("Please enter a valid 10-digit mobile number.", "warning"); 
+                return; 
+            }
+            // Strict OTP check
+            if(otp !== "1234") { 
+                if(otp.length === 0) {
+                     showToast("Please click 'Get OTP' first.", "warning"); 
+                } else {
+                     showToast("Incorrect OTP. Please click 'Get OTP' to reset.", "warning");
+                }
+                return; 
+            }
+
+            // If all valid, proceed
+            loginPage.classList.add('hidden-fade');
+            setTimeout(() => {
+                loginPage.classList.add('hidden');
+                
+                // Show Main App
+                mainContent.classList.remove('hidden');
+                void mainContent.offsetWidth;
+                mainContent.classList.remove('opacity-0');
+                
+                // Refresh Map and Center on User
+                if(window.myMap) {
+                    setTimeout(() => {
+                        window.myMap.invalidateSize();
+                        window.myMap.setView([userLat, userLng], 15);
+                        // Add marker for user location
+                        L.marker([userLat, userLng]).addTo(window.myMap)
+                            .bindPopup("<b>You are here</b>").openPopup();
+                    }, 500);
+                }
+                
+                // Welcome Toast
+                showToast(`Welcome back, ${name}!`, "success");
+                triggerConfetti();
+            }, 800);
+        }
+
+        function detectLoginLocation() {
+            const locText = document.getElementById('login-location-text');
+            locText.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Detecting...';
+            
+            // 1. Try Real Browser Geolocation first
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        // Success: Show real coordinates and save them
+                        userLat = position.coords.latitude;
+                        userLng = position.coords.longitude;
+                        
+                        locText.innerText = `Lat: ${userLat.toFixed(4)}, Long: ${userLng.toFixed(4)}`;
+                        locText.classList.remove('text-gray-400', 'text-yellow-500');
+                        locText.classList.add('text-green-400', 'font-mono', 'text-[10px]');
+                        showToast("Location detected successfully!", "success");
+                    },
+                    (error) => {
+                        // Error/Denial: Fallback to Simulation
+                        console.warn("Geolocation failed, falling back to simulation.");
+                        simulateLocation(locText);
+                    },
+                    { timeout: 5000 }
+                );
+            } else {
+                // Not supported: Fallback to Simulation
+                simulateLocation(locText);
+            }
+        }
+
+        function simulateLocation(element) {
+            setTimeout(() => {
+                // Use default NY coordinates for simulation
+                userLat = 40.7128; 
+                userLng = -74.0060;
+                
+                element.innerText = "New York, USA (Simulated)";
+                element.classList.remove('text-gray-400');
+                element.classList.add('text-yellow-500');
+                showToast("Using simulated location (GPS unavailable).", "warning");
+            }, 1500);
+        }
+
+        // --- Navigation Logic (Modified for Red Glow handling) ---
+        function showSection(sectionId) {
+            document.querySelectorAll('.section').forEach(el => el.classList.add('hidden-section'));
+            document.getElementById(sectionId).classList.remove('hidden-section');
+            document.getElementById(sectionId).classList.add('fade-in');
+
+            // Reset all nav items
+            document.querySelectorAll('.nav-item').forEach(el => {
+                el.classList.remove('active');
+                el.classList.add('text-gray-400'); // Reset to gray
+            });
+            
+            // Set active nav item with new Red Glow class
+            const activeNav = document.getElementById('nav-' + sectionId);
+            if(activeNav) {
+                activeNav.classList.add('active');
+                activeNav.classList.remove('text-gray-400');
+            }
+
+            // FIX: Invalidating size ensures map renders correctly if it was hidden
+            if (sectionId === 'dashboard' && window.myMap) {
+                setTimeout(() => { window.myMap.invalidateSize(); }, 100);
+            }
+        }
+
+        // --- 1. SUCCESS CONFETTI LOGIC ---
+        function triggerConfetti() {
+            var duration = 2 * 1000;
+            var animationEnd = Date.now() + duration;
+            var defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 100 };
+
+            var interval = setInterval(function() {
+                var timeLeft = animationEnd - Date.now();
+
+                if (timeLeft <= 0) {
+                    return clearInterval(interval);
+                }
+
+                var particleCount = 50 * (timeLeft / duration);
+                confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } }));
+                confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } }));
+            }, 250);
+        }
+
+        function randomInRange(min, max) {
+          return Math.random() * (max - min) + min;
+        }
+
+        // --- 2. SCROLL REVEAL OBSERVER ---
+        document.addEventListener('DOMContentLoaded', function() {
+            const observerOptions = { root: null, rootMargin: '0px', threshold: 0.1 };
+            const observer = new IntersectionObserver((entries, observer) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('is-visible');
+                        observer.unobserve(entry.target);
+                    }
+                });
+            }, observerOptions);
+
+            setTimeout(() => {
+                document.querySelectorAll('.reveal-on-scroll').forEach(el => observer.observe(el));
+            }, 100);
+        });
+
+        // --- UPVOTE / VERIFICATION LOGIC ---
+        function toggleUpvote(btn, countId) {
+            const countSpan = document.getElementById(countId);
+            let count = parseInt(countSpan.innerText);
+            const isActive = btn.classList.contains('bg-green-900/20');
+
+            if (isActive) {
+                count--;
+                btn.classList.remove('bg-green-900/20', 'text-green-400', 'border-green-800');
+                btn.classList.add('bg-gray-700/50', 'text-gray-400', 'border-transparent');
+            } else {
+                count++;
+                btn.classList.remove('bg-gray-700/50', 'text-gray-400', 'border-transparent');
+                btn.classList.add('bg-green-900/20', 'text-green-400', 'border-green-800');
+                showToast("Thanks for verifying!", "success");
+                
+                // TRIGGER CONFETTI ON UPVOTE
+                confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } });
+            }
+            countSpan.innerText = count;
+        }
+
+        // --- OFFLINE PWA LOGIC ---
+        window.addEventListener('online', updateOnlineStatus);
+        window.addEventListener('offline', updateOnlineStatus);
+
+        function updateOnlineStatus() {
+            const banner = document.getElementById('offline-banner');
+            const submitBtn = document.getElementById('submit-btn');
+
+            if (navigator.onLine) {
+                banner.classList.add('hidden');
+                if(submitBtn) {
+                    submitBtn.innerHTML = `Submit Complaint <i class="fa-solid fa-paper-plane"></i>`;
+                    submitBtn.classList.remove('bg-yellow-600');
+                    submitBtn.classList.add('bg-primary');
+                }
+                syncOfflineComplaints();
+            } else {
+                banner.classList.remove('hidden');
+                if(submitBtn) {
+                    submitBtn.innerHTML = `Save for Later (Offline) <i class="fa-solid fa-floppy-disk"></i>`;
+                    submitBtn.classList.remove('bg-primary');
+                    submitBtn.classList.add('bg-yellow-600');
+                }
+            }
+            updateQueueDisplay();
+        }
+
+        function submitComplaint() {
+            if (!document.getElementById('ai-category').value) { alert("Please upload a photo first."); return; }
+
+            const complaintData = {
+                id: Date.now(),
+                category: document.getElementById('ai-category').value,
+                timestamp: new Date().toLocaleString()
+            };
+
+            if (navigator.onLine) {
+                showToast("Submission Successful! +20 Karma Points", "success");
+                triggerConfetti();
+                
+                resetForm();
+                showSection('dashboard');
+            } else {
+                saveOffline(complaintData);
+                showToast("Saved offline. Will sync when online.", "warning");
+                resetForm();
+                showSection('track-progress');
+            }
+        }
+
+        function saveOffline(data) {
+            let queue = JSON.parse(localStorage.getItem('offlineQueue') || "[]");
+            queue.push(data);
+            localStorage.setItem('offlineQueue', JSON.stringify(queue));
+            updateQueueDisplay();
+        }
+
+        function updateQueueDisplay() {
+            const queue = JSON.parse(localStorage.getItem('offlineQueue') || "[]");
+            const queueCountEl = document.getElementById('queue-count');
+            const queueCard = document.getElementById('offline-queue-card');
+            
+            if(queueCountEl) queueCountEl.innerText = queue.length;
+            if(queueCard) queue.length > 0 ? queueCard.classList.remove('hidden') : queueCard.classList.add('hidden');
+        }
+
+        function syncOfflineComplaints() {
+            const queue = JSON.parse(localStorage.getItem('offlineQueue') || "[]");
+            if (queue.length === 0) return;
+            showToast(`Syncing ${queue.length} reports...`, "info");
+            setTimeout(() => {
+                localStorage.removeItem('offlineQueue');
+                updateQueueDisplay();
+                showToast("All offline reports uploaded!", "success");
+                triggerConfetti();
+            }, 2000);
+        }
+
+        function detectLocation() {
+            const input = document.getElementById('location-input');
+            const originalText = input.placeholder;
+            input.value = "";
+            input.placeholder = navigator.onLine ? "Locating..." : "Using cached location (Offline)";
+            setTimeout(() => {
+                if(!navigator.onLine) {
+                      input.value = "Lat: 40.7128, Long: -74.0060 (Approx)";
+                } else {
+                      input.value = "123 Main St, Springfield, IL 62704";
+                      setTimeout(() => { document.getElementById('duplicate-modal').classList.remove('hidden'); }, 500);
+                }
+                input.placeholder = originalText;
+            }, 1000);
+        }
+
+        function confirmDuplicate() {
+            document.getElementById('duplicate-modal').classList.add('hidden');
+            showToast("Verified! +50 Karma Points", "success");
+            triggerConfetti();
+            showSection('dashboard');
+        }
+
+        function ignoreDuplicate() {
+            document.getElementById('duplicate-modal').classList.add('hidden');
+        }
+
+        function handleFileSelect(input) {
+            if (input.files && input.files[0]) {
+                 document.getElementById('upload-text').innerHTML = `<i class="fa-solid fa-circle-notch fa-spin text-primary text-2xl mb-2"></i><br>Analyzing...`;
+                 setTimeout(() => {
+                    document.getElementById('upload-text').innerHTML = `<i class="fa-solid fa-check-circle text-green-500 text-2xl mb-2"></i><br>Done`;
+                    document.getElementById('upload-subtext').innerText = input.files[0].name;
+                    document.getElementById('upload-box').classList.add('border-green-500', 'bg-green-900/20');
+                    document.getElementById('ai-results').classList.remove('hidden');
+                    document.getElementById('ai-category').value = "Pothole (Road)";
+                    document.getElementById('ai-severity').value = "Medium";
+                    document.getElementById('ai-description').value = "Detected road surface damage approximately 30cm wide.";
+                 }, 1500);
+            }
+        }
+        
+        // --- VOICE DICTATION ---
+        function startDictation() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (SpeechRecognition) {
+                const recognition = new SpeechRecognition();
+                const micBtn = document.getElementById('mic-btn');
+                const micText = document.getElementById('mic-text');
+                const indicator = document.getElementById('mic-indicator');
+                const textArea = document.getElementById('ai-description');
+
+                recognition.lang = 'en-US';
+                recognition.start();
+
+                recognition.onstart = function() {
+                    micText.innerText = "Listening...";
+                    micBtn.classList.add('bg-red-900', 'text-red-400', 'animate-pulse');
+                    indicator.classList.remove('hidden');
+                };
+                recognition.onend = function() {
+                    micText.innerText = "Tap to Speak";
+                    micBtn.classList.remove('bg-red-900', 'text-red-400', 'animate-pulse');
+                    indicator.classList.add('hidden');
+                };
+                recognition.onresult = function(event) {
+                    const transcript = event.results[0][0].transcript;
+                    textArea.value += (textArea.value.length > 0 ? " " : "") + transcript;
+                };
+            } else {
+                alert("Speech recognition not supported in this browser. Try Chrome/Safari.");
+            }
+        }
+
+        function resetForm() {
+            document.getElementById('ai-results').classList.add('hidden');
+            document.getElementById('location-input').value = "";
+            document.getElementById('upload-text').innerHTML = "Click to upload or drag and drop";
+            document.getElementById('upload-box').classList.remove('border-green-500', 'bg-green-900/20');
+        }
+
+        function updateSlider(id, value) {
+            const beforeContainer = document.getElementById('before-container-' + id);
+            if (beforeContainer) beforeContainer.style.width = value + "%";
+            const handle = document.getElementById('slider-handle-' + id);
+            if (handle) handle.style.left = value + "%";
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            let bgClass = type === 'success' ? 'bg-green-600' : type === 'warning' ? 'bg-yellow-600' : 'bg-primary';
+            let icon = type === 'success' ? 'fa-check' : type === 'warning' ? 'fa-triangle-exclamation' : 'fa-info-circle';
+            toast.className = `${bgClass} text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-3 toast-enter pointer-events-auto min-w-[300px] border border-white/10`;
+            toast.innerHTML = `<i class="fa-solid ${icon}"></i> <span class="font-medium">${message}</span>`;
+            container.appendChild(toast);
+            requestAnimationFrame(() => { toast.classList.add('toast-enter-active'); toast.classList.remove('toast-enter'); });
+            setTimeout(() => {
+                toast.classList.add('toast-exit-active');
+                setTimeout(() => { toast.remove(); }, 300);
+            }, 3000);
+        }
+        
+        updateOnlineStatus();
+
+        // Map Init
+        document.addEventListener('DOMContentLoaded', function() {
+            if (document.getElementById('map')) {
+                window.myMap = L.map('map').setView([40.7128, -74.0060], 13);
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OpenStreetMap &copy; CARTO' }).addTo(window.myMap);
+                var redIcon = new L.Icon({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png', shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41] });
+                var greenIcon = new L.Icon({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png', shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41] });
+                L.marker([40.7128, -74.0060], {icon: redIcon}).addTo(window.myMap).bindPopup("<b>Broken Street Sign</b><br>Main St");
+                L.marker([40.7100, -74.0030], {icon: greenIcon}).addTo(window.myMap).bindPopup("<b>Traffic Light Fixed</b><br>5th & Broadway");
+            }
+            if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(err => console.log(err));
+        });
+    </script>
+</body>
+</html>
